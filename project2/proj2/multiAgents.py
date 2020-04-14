@@ -71,10 +71,50 @@ class ReflexAgent(Agent):
         newPos = successorGameState.getPacmanPosition()
         newFood = successorGameState.getFood()
         newGhostStates = successorGameState.getGhostStates()
+        newGhostPositions = successorGameState.getGhostPositions()
         newScaredTimes = [ghostState.scaredTimer for ghostState in newGhostStates]
 
         "*** YOUR CODE HERE ***"
-        return successorGameState.getScore()
+        # print("successorGameState: ", str(successorGameState))
+        # print("newPos: ", str(newPos))
+        # print("newFood: ", str(newFood))
+        # print("newGhostStates: ", [str(newGhostStates) for state in newGhostStates])
+        # print("newScaredTimes: ", str(newScaredTimes))
+
+        # Calculate distance between newPos and the closest ghost
+        ghost_dists = [l1Distance(newPos, ghost_pos) for ghost_pos in newGhostPositions]
+        closest_ghost_dist = min(ghost_dists)
+        # print("ghost_dists: ", str(ghost_dists))
+        for i in range(len(ghost_dists)):
+            if ghost_dists[i] == closest_ghost_dist:
+                closest_ghost_idx = i
+
+        if closest_ghost_dist == 0:
+            ghost_score = -1e6
+        else:
+            ghost_score = -10 / closest_ghost_dist
+
+        # Calculate distance between newPos and the closet food
+        food_list = newFood.asList()
+        closest_food_dist = 0
+        if food_list:
+            food_dists = [l1Distance(newPos, food_pos) for food_pos in food_list]
+            closest_food_dist = min(food_dists)
+
+        if len(food_list) == 0 or closest_food_dist == 0:
+            food_score = 0
+        else:
+            food_score = -2 * closest_food_dist
+
+        # Reward agent if it eats a food pellet
+        food_left = len(food_list)
+        num_score = 30 * food_left
+        # Calculate evaluation score
+        # print(newScaredTimes)
+        if newScaredTimes[closest_ghost_idx] > 0:
+            return food_score - num_score
+        else:
+            return food_score + ghost_score - num_score
 
 def scoreEvaluationFunction(currentGameState):
     """
@@ -135,7 +175,43 @@ class MinimaxAgent(MultiAgentSearchAgent):
         Returns whether or not the game state is a losing state
         """
         "*** YOUR CODE HERE ***"
-        util.raiseNotDefined()
+        num_agents = gameState.getNumAgents()
+
+        def _minimax(s, iters):
+            _scores = []
+            if iters >= self.depth * num_agents or s.isWin() or s.isLose(): # as ghosts move in sequence, actual depth = depth * num_agents
+                return self.evaluationFunction(s), _scores
+            agent_idx = iters % num_agents
+            # Ghost's turn (Minimize score)
+            if agent_idx != 0:
+                _result = float('inf')
+                for action in s.getLegalActions(agent_idx):
+                    if action == 'Stop':
+                        continue
+                    s_next = s.generateSuccessor(agent_idx, action)
+                    _result = min(_result, _minimax(s_next, iters + 1)[0])
+
+            # Pac-man's turn
+            else:
+                _result = -float('inf')
+                for action in s.getLegalActions(agent_idx):
+                    if action == 'Stop':
+                        continue
+                    s_next = s.generateSuccessor(agent_idx, action)
+                    _result = max(_result, _minimax(s_next, iters + 1)[0])
+                    if iters == 0:
+                        _scores.append(_result)
+            return _result, _scores
+
+        result, scores = _minimax(gameState, 0)
+        actions = gameState.getLegalActions(0) # All moves for pac-man
+
+        final_actions = []
+        for a in actions:
+            if a != 'Stop':
+                final_actions.append(a)
+        # print(final_actions)
+        return final_actions[scores.index(max(scores))]
 
 class AlphaBetaAgent(MultiAgentSearchAgent):
     """
@@ -147,7 +223,49 @@ class AlphaBetaAgent(MultiAgentSearchAgent):
         Returns the minimax action using self.depth and self.evaluationFunction
         """
         "*** YOUR CODE HERE ***"
-        util.raiseNotDefined()
+        num_agents = gameState.getNumAgents()
+
+        def _alphabeta(s, iters, alpha, beta):
+            _scores = []
+            if iters >= self.depth * num_agents or s.isWin() or s.isLose(): # as ghosts move in sequence, actual depth = depth * num_agents
+                return self.evaluationFunction(s), _scores
+            agent_idx = iters % num_agents
+            # Ghost's turn (Minimize score)
+            if agent_idx != 0:
+                _result = float('inf')
+                for action in s.getLegalActions(agent_idx):
+                    if action == 'Stop':
+                        continue
+                    s_next = s.generateSuccessor(agent_idx, action)
+                    _result = min(_result, _alphabeta(s_next, iters + 1, alpha, beta)[0])
+                    beta = min(beta, _result)
+                    if beta < alpha:
+                        break
+
+            # Pac-man's turn
+            else:
+                _result = -float('inf')
+                for action in s.getLegalActions(agent_idx):
+                    if action == 'Stop':
+                        continue
+                    s_next = s.generateSuccessor(agent_idx, action)
+                    _result = max(_result, _alphabeta(s_next, iters + 1, alpha, beta)[0])
+                    if iters == 0:
+                        _scores.append(_result)
+                    alpha = max(alpha, _result)
+                    if beta < alpha:
+                        break
+            return _result, _scores
+
+        result, scores = _alphabeta(gameState, 0, -float('inf'), float('inf'))
+        actions = gameState.getLegalActions(0) # All moves for pac-man
+
+        final_actions = []
+        for a in actions:
+            if a != 'Stop':
+                final_actions.append(a)
+        # print(final_actions)
+        return final_actions[scores.index(max(scores))]
 
 class ExpectimaxAgent(MultiAgentSearchAgent):
     """
@@ -162,17 +280,104 @@ class ExpectimaxAgent(MultiAgentSearchAgent):
         legal moves.
         """
         "*** YOUR CODE HERE ***"
-        util.raiseNotDefined()
+        num_agents = gameState.getNumAgents()
+
+        def _expectiMax(s, iters):
+            _scores = []
+            if iters >= self.depth * num_agents or s.isWin() or s.isLose():  # as ghosts move in sequence, actual depth = depth * num_agents
+                return self.evaluationFunction(s), _scores
+            agent_idx = iters % num_agents
+            # Ghost's turn (Minimize score)
+            if agent_idx != 0:
+                successorScores = []
+                for action in s.getLegalActions(agent_idx):
+                    if action == 'Stop':
+                        continue
+                    s_next = s.generateSuccessor(agent_idx, action)
+
+                    # Calculate expected score
+                    successorScores.append(_expectiMax(s_next, iters + 1)[0])
+                expectation = sum([float(x) for x in successorScores]) / len(successorScores)
+                return expectation, _scores
+            # Pac-man's turn
+            else:
+                _result = -float('inf')
+                for action in s.getLegalActions(agent_idx):
+                    if action == 'Stop':
+                        continue
+                    s_next = s.generateSuccessor(agent_idx, action)
+                    _result = max(_result, _expectiMax(s_next, iters + 1)[0])
+                    if iters == 0:
+                        _scores.append(_result)
+            return _result, _scores
+
+        result, scores = _expectiMax(gameState, 0)
+        actions = gameState.getLegalActions(0)  # All moves for pac-man
+
+        final_actions = []
+        for a in actions:
+            if a != 'Stop':
+                final_actions.append(a)
+        # print(final_actions)
+        return final_actions[scores.index(max(scores))]
 
 def betterEvaluationFunction(currentGameState):
     """
     Your extreme ghost-hunting, pellet-nabbing, food-gobbling, unstoppable
     evaluation function (question 5).
 
-    DESCRIPTION: <write something here so we know what you did>
+    DESCRIPTION: Our solution can be divided into 4 parts
+    1. ghost_score: when ghosts are not scared, run away from the ghost. Being too closed to the ghost results in a huge penalty
+    2. food_score: reward the pac-man if it's closer to the farthest food (analogical to the foodSearch heuristic)
+    3. capsule_score: reward the pac-man if it's closer to the capsule
+    4. reward the pac-man if it's able to eat one food pellet
     """
     "*** YOUR CODE HERE ***"
-    util.raiseNotDefined()
+    # successorGameState = currentGameState.generatePacmanSuccessor(action)
+    currentPos = currentGameState.getPacmanPosition()
+    currentFood = currentGameState.getFood()
+    currentGhostStates = currentGameState.getGhostStates()
+    currentGhostPositions = currentGameState.getGhostPositions()
+    currentScaredTimes = [ghostState.scaredTimer for ghostState in currentGhostStates]
+
+    # Calculate distance between newPos and the closest ghost
+    ghost_dists = [l1Distance(currentPos, ghost_pos) for ghost_pos in currentGhostPositions]
+    closest_ghost_idx = ghost_dists.index(min(ghost_dists))
+    closest_ghost_dist = ghost_dists[closest_ghost_idx]
+    if currentScaredTimes[closest_ghost_idx] <= 1:
+        ghost_score = -pow(max(5-closest_ghost_dist, 0), 2) # when not having scaredTimer, run away from the ghost
+    else:
+        ghost_score = pow(max(10-closest_ghost_dist, 0), 2) # otherwise try to eat the ghost when it's nearby
+
+    # Calculate distance between newPos and the closet food
+    food_list = currentFood.asList()
+    food_dists = [l1Distance(currentPos, food_pos) for food_pos in food_list]
+    num_food_left = len(food_dists)
+    if num_food_left > 0:
+        food_score = 1 / max(food_dists)
+    else:
+        food_score = 0
+
+    # Calculate distance between pacman and the closest capsule
+    capsules = currentGameState.getCapsules()
+    if len(capsules) > 0:
+        capsule_dists = [l1Distance(currentPos, capsule_pos) for capsule_pos in capsules]
+        capsule_score = 20 / min(capsule_dists)
+    else:
+        capsule_score = 0
+
+    # Reward agent if it eats a food pellet
+    food_left = len(food_list)
+
+    # Calculate evaluation score
+
+    return currentGameState.getScore() + food_score + ghost_score + capsule_score - 30 * len(food_list)
 
 # Abbreviation
 better = betterEvaluationFunction
+
+# Some helper functions
+def l1Distance(pos1, pos2):
+    x1, y1 = pos1
+    x2, y2 = pos2
+    return abs(x1 - x2) + abs(y1 - y2)
